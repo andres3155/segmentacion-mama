@@ -1,0 +1,105 @@
+import numpy as np 
+import cv2 
+import os
+import matplotlib as mtl
+from matplotlib import pyplot as plt
+
+
+def imageFunctionProcessing(path):
+    imagecol = cv2.imread(path,cv2.COLOR_BGR2RGB)
+
+    # procesamiento en HSV 
+    imghsv = cv2.cvtColor(imagecol,cv2.COLOR_RGB2HSV)
+    capaHSV = 2
+    imghsvecu =  cv2.GaussianBlur(imghsv[:,:,capaHSV],(3,3),0.5) # FILTRO PASA BAJO GAUSSIANO 3X3 SIGMA 2 -SELECCIONADA()
+    imghsv[:,:,capaHSV] = imghsvecu
+
+    # Trabajando en escala de Grises segmentacion por umbral con otsu 
+    imgcolecuH = cv2.cvtColor(imghsv,cv2.COLOR_HSV2RGB)
+    img = cv2.cvtColor(imgcolecuH,cv2.COLOR_RGB2GRAY)
+    blur = cv2.GaussianBlur(img,(5,5),0)
+    ret,th = cv2.threshold(blur,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    th = 255- th
+
+    #### operacion morfologica #####
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(20,20))
+    th = cv2.morphologyEx(th,cv2.MORPH_CLOSE,kernel)
+
+    # Aplicar Primera Mascara a la imagen en color 
+    imgsegmentada= cv2.bitwise_and(imagecol,imagecol,mask = th)
+    # contornos 
+    contorno,jerarquia = cv2.findContours(th,cv2.RETR_EXTERNAL ,cv2.CHAIN_APPROX_SIMPLE)
+
+    area  = []
+
+    ## CALCULANDO MOMENTOS (CENTROIDE Y AREA )
+    for i in range (len(contorno)):
+        cnt = contorno[i]
+        M = cv2.moments(cnt)
+        area.append(M["m00"])
+        
+
+        if (len(contorno)-1) == i:
+            areaMax =  max(area)
+            findMaxindex = area.index(areaMax)
+            contornoMax = contorno[findMaxindex]
+            M = cv2.moments(contornoMax)
+            CX = int(M["m10"]/M["m00"])
+            CY = int(M["m01"]/M["m00"])
+            x,y,w,h = cv2.boundingRect(contornoMax)
+            
+
+    #Creando Maskcara para  ROI 
+    rectangle = np.zeros((imgsegmentada.shape[0],imgsegmentada.shape[1]),dtype=np.uint8)
+    rectangle = cv2.rectangle(rectangle,(x,y),(x+w,y+h),255,-1)
+
+    # Aplicando Segunda mascara 
+    imgsegmentada = cv2.bitwise_and(imgsegmentada,imgsegmentada,mask=rectangle)
+
+    return imgsegmentada
+
+
+
+in_PATH = 'C:\\Users\\danie\Desktop\\Base_datos\\benign\\'
+outh_PATH = 'C:\\Users\danie\\Desktop\\Base_datos\\bening_modificado\\'
+name_image_input = 'Benign_ ({0}).jpg'
+name_image_output ='Benign_ ({0})_seg.jpg'
+
+# in_PATH = 'C:\\Users\\danie\Desktop\\Base_datos\\malignant\\'
+# outh_PATH = 'C:\\Users\danie\\Desktop\\Base_datos\\malignant_modificado\\'
+# name_image_input = 'malignant_ ({0}).jpg'
+# name_image_output ='malignant_ ({0})_seg.jpg'
+
+input_images_path = in_PATH
+
+#CONTAMOS LA CANTIDAD DE IMAGENES EN LA CARPETA 
+
+initial_count = 0
+dir = input_images_path
+file_names_images = []
+
+for path in os.listdir(dir):
+    if os.path.isfile(os.path.join(dir, path)):
+        initial_count += 1
+print(initial_count)
+
+
+
+#Almacenando en un arreglo la direccion de las imagenes los nombres vienen dados por mdb .pgm desde 1
+
+file_names_images = []
+for i in range(initial_count):
+  file_names_images.append(dir + name_image_input.format(i+1))
+
+#Verificando 
+print(len(file_names_images))
+print(file_names_images[0])
+
+
+# Redimensionando la imagenes en 224 x 244 para estandarizar y convirtiendo a escala de grises 
+output_images_path = outh_PATH
+#Tamaño_final_Dataset = 100
+
+for i in range(initial_count):
+    imageFinal= imageFunctionProcessing(file_names_images[i])
+    cv2.imwrite(output_images_path  + name_image_output.format(i+1), imageFinal)
